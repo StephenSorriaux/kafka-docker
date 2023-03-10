@@ -1,7 +1,7 @@
 version: '2.1'
 
 x-kafka-defaults: &kafka-defaults
-  image: wurstmeister/kafka
+  image: "ssorriaux/kafka:${DOCKER_IMAGE_VERSION}"
   ports:
     - "9092"
   volumes:
@@ -24,7 +24,7 @@ services:
       KAFKA_BROKER_ID: 2
 
   kafkatest:
-    image: wurstmeister/kafka
+    image: "ssorriaux/kafka:${DOCKER_IMAGE_VERSION}"
     environment:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
     volumes:
