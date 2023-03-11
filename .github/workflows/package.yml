@@ -8,7 +8,7 @@ on:
     branches: ["master"]
 
 env:
-  LATEST: "2.13-2.8.1"
+  LATEST: "2.13-3.2.0"
   IMAGE_DEST: "ssorriaux/kafka"
 
 jobs:
@@ -21,22 +21,50 @@ jobs:
         include:
         - scala: 2.12
           kafka_version: 2.1.1
+          extra_compose_file: "test/docker-compose-kafka.yml"
         - scala: 2.12
           kafka_version: 2.2.2
+          extra_compose_file: "test/docker-compose-kafka.yml"
         - scala: 2.12
           kafka_version: 2.3.1
+          extra_compose_file: "test/docker-compose-kafka.yml"
         - scala: 2.12
           kafka_version: 2.4.1
+          extra_compose_file: "test/docker-compose-kafka.yml"
         - scala: 2.12
           kafka_version: 2.5.1
+          extra_compose_file: "test/docker-compose-kafka.yml"
         - scala: 2.13
           kafka_version: 2.6.3
+          extra_compose_file: "test/docker-compose-kafka.yml"
         - scala: 2.13
           kafka_version: 2.7.2
+          extra_compose_file: "test/docker-compose-kafka.yml"
         - scala: 2.13
-          kafka_version: 2.8.1
+          kafka_version: 2.8.2
+          extra_compose_file: "test/docker-compose-kafka.yml"
+        - scala: 2.13
+          kafka_version: 3.0.2
+          extra_compose_file: "test/docker-compose-kafka3.yml"
+        - scala: 2.13
+          kafka_version: 3.1.2
+          extra_compose_file: "test/docker-compose-kafka3.yml"
+        - scala: 2.13
+          kafka_version: 3.2.3
+          extra_compose_file: "test/docker-compose-kafka3.yml"
+        - scala: 2.13
+          kafka_version: 3.3.2
+          extra_compose_file: "test/docker-compose-kafka3.yml"
+        - scala: 2.13
+          kafka_version: 3.4.0
+          extra_compose_file: "test/docker-compose-kafka3.yml"
 
     steps:
+    - name: Install needed libs
+      run: |
+        sudo apt update
+        sudo apt install -y shellcheck
+
     - name: Checkout
       uses: actions/checkout@v3
 
@@ -55,9 +83,56 @@ jobs:
       id: setup
       run: |
         echo BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") >> $GITHUB_OUTPUT
+        echo DOCKER_IMAGE_VERSION=${{ matrix.scala }}-${{ matrix.kafka_version }} >> $GITHUB_ENV
         echo DOCKER_IMAGE_TAG=${{ env.IMAGE_DEST }}:${{ matrix.scala }}-${{ matrix.kafka_version }} >> $GITHUB_OUTPUT
 
-    - name: Build and push
+    - name: Build image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: false
+        tags: ${{ steps.setup.outputs.DOCKER_IMAGE_TAG }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          kafka_version=${{ matrix.kafka_version }}
+          scala_version=${{ matrix.scala }}
+          vcs_ref=${{ github.sha }}
+          build_date=${{ steps.setup.outputs.BUILD_DATE }}
+
+    - name: Create test env using docker-compose
+      run: |
+        docker-compose -f test/docker-compose.yml -f ${{ matrix.extra_compose_file }} up -d zookeeper kafka_1 kafka_2
+
+    - name: Perform shellcheck
+      run: |
+        echo "Shellcheck main source files"
+        shellcheck -s bash broker-list.sh create-topics.sh start-kafka.sh download-kafka.sh versions.sh
+        cd test
+        echo "Shellcheck the tests"
+        shellcheck -x -e SC1090 -s bash *.sh **/*.sh
+
+    - name: Perform tests for image
+      run: |
+        cd test
+        echo "Verify docker image's label"
+        ./verifyImageLabels.sh
+        echo "Wait for containers to start"
+        sleep 5
+        # docker-compose logs
+        docker ps -a
+        echo "Run tests"
+        ./runAllTests.sh
+        echo "End-to-End scenario tests"
+        cd scenarios
+        ./runJmxScenario.sh
+
+    - name: Destroy test env using docker-compose
+      run: |
+        docker-compose down
+
+    - name: Push image
       uses: docker/build-push-action@v4
       with:
         context: .
