@@ -64,6 +64,9 @@ jobs:
         - scala: 2.13
           kafka_version: 3.6.1
           extra_compose_file: "test/docker-compose-kafka3.yml"
+        - scala: 2.13
+          kafka_version: 3.7.0
+          extra_compose_file: "test/docker-compose-kafka3.yml"
 
     steps:
     - name: Install needed libs
